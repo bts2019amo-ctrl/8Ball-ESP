@@ -21,47 +21,32 @@ jobs:
             ls -la 8Ball/
           fi
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm curl unzip perl git fakeroot xz-utils libncurses6
+      - name: Setup Theos
+        uses: beerpiss/theos-action@v1
+        with:
+          theos-sdks: https://github.com/theos/sdks
+          cache: true
 
-      - name: Setup Theos + SDK + toolchain
+      - name: Ensure iPhoneOS SDK present
         run: |
           set -x
-          export THEOS=$HOME/theos
-          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
-          echo "THEOS=$THEOS" >> $GITHUB_ENV
-          mkdir -p "$THEOS/sdks" "$THEOS/toolchain/linux/iphone"
-
-          # iPhoneOS SDK (14.5 matches TARGET)
-          curl -L -o sdk.tar.xz "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS14.5.sdk.tar.xz"
-          tar -xJf sdk.tar.xz -C "$THEOS/sdks"
-          ls -la "$THEOS/sdks"
-
-          # clang toolchain for linux -> arm64
-          curl -L -o toolchain.tar.lzma "https://github.com/sbingner/llvm-project/releases/download/v16.0.0-1/linux-ios-arm64e-clang-toolchain.tar.lzma" || \
-          curl -L -o toolchain.tar.lzma "https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma"
-          TMP=$(mktemp -d)
-          tar --lzma -xvf toolchain.tar.lzma -C "$TMP" || tar -xvf toolchain.tar.lzma -C "$TMP"
-          if [ -d "$TMP/ios-arm64e-clang-toolchain" ]; then
-            mv "$TMP/ios-arm64e-clang-toolchain"/* "$THEOS/toolchain/linux/iphone/"
-          else
-            # flat extract fallback
-            find "$TMP" -maxdepth 2 -type d | head
-            cp -a "$TMP"/* "$THEOS/toolchain/linux/iphone/" 2>/dev/null || true
+          echo "THEOS=$THEOS"
+          ls -la $THEOS/sdks/ || true
+          if ! ls $THEOS/sdks/iPhoneOS*.sdk >/dev/null 2>&1; then
+            mkdir -p $THEOS/sdks
+            curl -L -o /tmp/sdk.tar.xz "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS14.5.sdk.tar.xz"
+            tar -xJf /tmp/sdk.tar.xz -C $THEOS/sdks
+            ls -la $THEOS/sdks/
           fi
-          ls -la "$THEOS/toolchain/linux/iphone" | head -20
 
       - name: Build
         run: |
           set -x
-          export THEOS=$HOME/theos
           export PATH="$THEOS/bin:$PATH"
           cd 8Ball
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1
-          echo "=== find outputs ==="
-          find . -name "*.deb" -o -name "*.dylib" | head -30
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tee /tmp/build.log
+          echo "=== make exit: $? ==="
+          tail -100 /tmp/build.log
 
       - name: Collect artifacts
         if: always()
