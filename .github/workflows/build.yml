@@ -12,27 +12,50 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Unzip full source
+        run: |
+          ls -la
+          if [ -f 8Ball-2.zip ]; then
+            rm -rf 8Ball
+            unzip -o 8Ball-2.zip
+            ls -la 8Ball/ | head -30
+          else
+            echo "No zip found, using existing 8Ball/"
+          fi
+
       - name: Install dependencies
         run: |
-          brew install ldid
+          brew install ldid || true
+          # ensure clang / xcode tools
+          xcode-select -p
 
       - name: Setup Theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          git clone --recursive --depth 1 https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
           cd $HOME/theos
+          # sdks (fallback)
           git clone --depth 1 https://github.com/theos/sdks.git sdks || true
-          if [ -d /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs ]; then
-            echo "Using system Xcode iPhoneOS SDK"
-          fi
+          ls -la
+          # prefer Xcode iPhoneOS SDK if present
+          ls /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/ || true
 
       - name: Build package
         working-directory: 8Ball
         run: |
           export THEOS=$HOME/theos
-          export PATH=$THEOS/bin:$PATH
+          export PATH="$THEOS/bin:$PATH"
+          echo "THEOS=$THEOS"
+          which make
           make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || make package
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless -j$(sysctl -n hw.ncpu) || make package THEOS_PACKAGE_SCHEME=rootless
+
+      - name: List output
+        if: always()
+        run: |
+          find 8Ball -name "*.deb" -o -name "*.dylib" 2>/dev/null || true
+          ls -la 8Ball/packages/ 2>/dev/null || true
+          ls -la 8Ball/.theos/obj/ 2>/dev/null || true
 
       - name: Upload deb
         uses: actions/upload-artifact@v4
@@ -41,5 +64,7 @@ jobs:
           name: 8Ball-deb
           path: |
             8Ball/packages/*.deb
+            8Ball/.theos/obj/**/*.dylib
             8Ball/.theos/obj/**
           if-no-files-found: warn
+          retention-days: 5
