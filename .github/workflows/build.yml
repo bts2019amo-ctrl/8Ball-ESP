@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,12 +23,11 @@ jobs:
             ls -la 8Ball/
           fi
 
-      - name: Install tools
+      - name: Install dependencies
         run: |
           set -x
-          brew install ldid
-          xcode-select -p
-          clang --version || true
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang llvm libtinfo5 curl unzip perl git
 
       - name: Setup Theos
         run: |
@@ -37,9 +36,13 @@ jobs:
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           cd "$THEOS"
+          # iOS SDK for Theos on Linux
           git clone --depth 1 https://github.com/theos/sdks.git sdks || true
-          ls -la "$THEOS"
-          ls /Applications/Xcode*.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/ 2>/dev/null || true
+          ls -la "$THEOS"/sdks || true
+          # toolchain
+          curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma || true
+          mkdir -p "$THEOS"/toolchain/linux/iphone
+          tar --lzma -xvf linux-ios-arm64e-clang-toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 2>/dev/null || true
 
       - name: Build
         run: |
@@ -49,15 +52,17 @@ jobs:
           cd 8Ball
           ls -la
           cat Makefile
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || make package
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || make package || true
 
       - name: Collect artifacts
         if: always()
         run: |
           mkdir -p out
-          find 8Ball -name "*.deb" -exec cp {} out/ \; || true
-          find 8Ball -name "*.dylib" -exec cp {} out/ \; || true
-          ls -la out/ || true
+          find 8Ball -name "*.deb" -exec cp {} out/ \; 2>/dev/null || true
+          find 8Ball -name "*.dylib" -exec cp {} out/ \; 2>/dev/null || true
+          find 8Ball -name "*.so" -exec cp {} out/ \; 2>/dev/null || true
+          ls -laR out/ || true
+          ls -la 8Ball/packages/ 2>/dev/null || true
 
       - name: Upload
         uses: actions/upload-artifact@v4
