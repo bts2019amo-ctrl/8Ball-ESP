@@ -27,7 +27,7 @@ jobs:
         run: |
           set -x
           sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm libtinfo5 curl unzip perl git
+          sudo apt-get install -y build-essential clang llvm curl unzip perl git libncurses6 || true
 
       - name: Setup Theos
         run: |
@@ -36,13 +36,16 @@ jobs:
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
           echo "THEOS=$THEOS" >> $GITHUB_ENV
           cd "$THEOS"
-          # iOS SDK for Theos on Linux
           git clone --depth 1 https://github.com/theos/sdks.git sdks || true
           ls -la "$THEOS"/sdks || true
-          # toolchain
-          curl -LO https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma || true
+          # toolchain for linux
+          curl -L -o toolchain.tar.lzma "https://github.com/sbingner/llvm-project/releases/download/v16.0.0-1/linux-ios-arm64e-clang-toolchain.tar.lzma" || \
+          curl -L -o toolchain.tar.lzma "https://github.com/theos/theos/releases/download/toolchain/linux-ios-arm64e-clang-toolchain.tar.lzma" || true
           mkdir -p "$THEOS"/toolchain/linux/iphone
-          tar --lzma -xvf linux-ios-arm64e-clang-toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 2>/dev/null || true
+          if [ -f toolchain.tar.lzma ]; then
+            tar --lzma -xvf toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 || tar -xvf toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 || true
+          fi
+          ls -la "$THEOS"/toolchain/linux/iphone 2>/dev/null || true
 
       - name: Build
         run: |
@@ -52,7 +55,8 @@ jobs:
           cd 8Ball
           ls -la
           cat Makefile
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || make package || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tee /tmp/build.log || make package 2>&1 | tee -a /tmp/build.log || true
+          cat /tmp/build.log | tail -80
 
       - name: Collect artifacts
         if: always()
@@ -63,6 +67,7 @@ jobs:
           find 8Ball -name "*.so" -exec cp {} out/ \; 2>/dev/null || true
           ls -laR out/ || true
           ls -la 8Ball/packages/ 2>/dev/null || true
+          ls -la 8Ball/.theos/obj/ 2>/dev/null || true
 
       - name: Upload
         uses: actions/upload-artifact@v4
