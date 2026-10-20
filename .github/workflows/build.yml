@@ -14,7 +14,6 @@ jobs:
 
       - name: Unzip full source
         run: |
-          set -x
           if [ -f 8Ball-2.zip ]; then
             rm -rf 8Ball
             unzip -o 8Ball-2.zip
@@ -24,29 +23,19 @@ jobs:
       - name: Setup Theos
         uses: beerpiss/theos-action@v1
         with:
-          theos-sdks: https://github.com/theos/sdks
+          theos-dir: ${{ github.workspace }}/theos
           cache: true
 
-      - name: Ensure iPhoneOS SDK present
-        run: |
-          set -x
-          echo "THEOS=$THEOS"
-          ls -la $THEOS/sdks/ || true
-          if ! ls $THEOS/sdks/iPhoneOS*.sdk >/dev/null 2>&1; then
-            mkdir -p $THEOS/sdks
-            curl -L -o /tmp/sdk.tar.xz "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS14.5.sdk.tar.xz"
-            tar -xJf /tmp/sdk.tar.xz -C $THEOS/sdks
-            ls -la $THEOS/sdks/
-          fi
-
       - name: Build
+        env:
+          THEOS: ${{ github.workspace }}/theos
         run: |
           set -x
           export PATH="$THEOS/bin:$PATH"
+          ls -la "$THEOS/sdks" || true
           cd 8Ball
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tee /tmp/build.log
-          echo "=== make exit: $? ==="
-          tail -100 /tmp/build.log
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1
+          find . -name "*.deb" -o -name "*.dylib" | head -30
 
       - name: Collect artifacts
         if: always()
