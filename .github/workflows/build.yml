@@ -38,6 +38,7 @@ jobs:
         env:
           THEOS: ${{ github.workspace }}/theos
         run: |
+          set -euo pipefail
           set -x
           export PATH="$THEOS/bin:$PATH"
           cd 8Ball
