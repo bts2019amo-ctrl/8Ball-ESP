@@ -1,0 +1,45 @@
+name: Build 8Ball Theos Tweak
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install ldid
+
+      - name: Setup Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          cd $HOME/theos
+          git clone --depth 1 https://github.com/theos/sdks.git sdks || true
+          if [ -d /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs ]; then
+            echo "Using system Xcode iPhoneOS SDK"
+          fi
+
+      - name: Build package
+        working-directory: 8Ball
+        run: |
+          export THEOS=$HOME/theos
+          export PATH=$THEOS/bin:$PATH
+          make clean || true
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || make package
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: 8Ball-deb
+          path: |
+            8Ball/packages/*.deb
+            8Ball/.theos/obj/**
+          if-no-files-found: warn
