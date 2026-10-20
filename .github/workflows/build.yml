@@ -7,64 +7,62 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-13
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Unzip full source
         run: |
+          set -x
           ls -la
           if [ -f 8Ball-2.zip ]; then
             rm -rf 8Ball
             unzip -o 8Ball-2.zip
-            ls -la 8Ball/ | head -30
-          else
-            echo "No zip found, using existing 8Ball/"
+            echo "=== extracted ==="
+            ls -la 8Ball/
           fi
 
-      - name: Install dependencies
+      - name: Install tools
         run: |
-          brew install ldid || true
-          # ensure clang / xcode tools
+          set -x
+          brew install ldid
           xcode-select -p
+          clang --version || true
 
       - name: Setup Theos
         run: |
-          git clone --recursive --depth 1 https://github.com/theos/theos.git $HOME/theos
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-          cd $HOME/theos
-          # sdks (fallback)
+          set -x
+          export THEOS=$HOME/theos
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          echo "THEOS=$THEOS" >> $GITHUB_ENV
+          cd "$THEOS"
           git clone --depth 1 https://github.com/theos/sdks.git sdks || true
-          ls -la
-          # prefer Xcode iPhoneOS SDK if present
-          ls /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/ || true
+          ls -la "$THEOS"
+          ls /Applications/Xcode*.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/ 2>/dev/null || true
 
-      - name: Build package
-        working-directory: 8Ball
+      - name: Build
         run: |
+          set -x
           export THEOS=$HOME/theos
           export PATH="$THEOS/bin:$PATH"
-          echo "THEOS=$THEOS"
-          which make
-          make clean || true
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless -j$(sysctl -n hw.ncpu) || make package THEOS_PACKAGE_SCHEME=rootless
+          cd 8Ball
+          ls -la
+          cat Makefile
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless || make package
 
-      - name: List output
+      - name: Collect artifacts
         if: always()
         run: |
-          find 8Ball -name "*.deb" -o -name "*.dylib" 2>/dev/null || true
-          ls -la 8Ball/packages/ 2>/dev/null || true
-          ls -la 8Ball/.theos/obj/ 2>/dev/null || true
+          mkdir -p out
+          find 8Ball -name "*.deb" -exec cp {} out/ \; || true
+          find 8Ball -name "*.dylib" -exec cp {} out/ \; || true
+          ls -la out/ || true
 
-      - name: Upload deb
+      - name: Upload
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: 8Ball-deb
-          path: |
-            8Ball/packages/*.deb
-            8Ball/.theos/obj/**/*.dylib
-            8Ball/.theos/obj/**
+          path: out/
           if-no-files-found: warn
-          retention-days: 5
