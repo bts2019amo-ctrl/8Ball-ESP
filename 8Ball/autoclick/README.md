@@ -1,0 +1,1 @@
+# autoclick helpers (KIF-based)
