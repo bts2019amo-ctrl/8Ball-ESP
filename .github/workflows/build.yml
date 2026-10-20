@@ -26,24 +26,28 @@ jobs:
           theos-dir: ${{ github.workspace }}/theos
           cache: true
 
+      - name: Patch source for ARC
+        run: |
+          set -x
+          # fix __weak under non-ARC / mixed
+          sed -i '' 's/static __weak UIWindow/static __unsafe_unretained UIWindow/g' 8Ball/ImGuiDrawView.mm || \
+          sed -i 's/static __weak UIWindow/static __unsafe_unretained UIWindow/g' 8Ball/ImGuiDrawView.mm
+          grep -n "g_gestureAttachedWindow" 8Ball/ImGuiDrawView.mm | head -5
+
       - name: Build
         env:
           THEOS: ${{ github.workspace }}/theos
         run: |
           set -x
           export PATH="$THEOS/bin:$PATH"
-          ls -la "$THEOS/sdks" || true
           cd 8Ball
-          # kill the imgui clang warning that is treated as error
-          export ADDITIONAL_CFLAGS="-Wno-uninitialized-const-pointer -Wno-error=uninitialized-const-pointer -Wno-error"
-          export ADDITIONAL_CCFLAGS="-Wno-uninitialized-const-pointer -Wno-error=uninitialized-const-pointer -Wno-error"
           make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless \
-            8Ball_CFLAGS+="-Wno-uninitialized-const-pointer -Wno-error" \
-            8Ball_CCFLAGS+="-Wno-uninitialized-const-pointer -Wno-error" \
+            8Ball_CFLAGS+="-fobjc-arc -Wno-uninitialized-const-pointer -Wno-error -Wno-deprecated-declarations" \
+            8Ball_CCFLAGS+="-std=c++17 -fobjc-arc -Wno-uninitialized-const-pointer -Wno-error -Wno-deprecated-declarations" \
             2>&1 | tee /tmp/build.log
-          echo "=== exit $? ==="
-          tail -50 /tmp/build.log
-          find . -name "*.deb" -o -name "*.dylib" | head -30
+          echo "MAKE_EXIT=${PIPESTATUS[0]}"
+          tail -40 /tmp/build.log
+          find . -name "*.deb" -o -name "*.dylib" | head -20
 
       - name: Collect artifacts
         if: always()
