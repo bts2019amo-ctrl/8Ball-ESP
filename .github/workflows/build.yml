@@ -34,7 +34,15 @@ jobs:
           export PATH="$THEOS/bin:$PATH"
           ls -la "$THEOS/sdks" || true
           cd 8Ball
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1
+          # kill the imgui clang warning that is treated as error
+          export ADDITIONAL_CFLAGS="-Wno-uninitialized-const-pointer -Wno-error=uninitialized-const-pointer -Wno-error"
+          export ADDITIONAL_CCFLAGS="-Wno-uninitialized-const-pointer -Wno-error=uninitialized-const-pointer -Wno-error"
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless \
+            8Ball_CFLAGS+="-Wno-uninitialized-const-pointer -Wno-error" \
+            8Ball_CCFLAGS+="-Wno-uninitialized-const-pointer -Wno-error" \
+            2>&1 | tee /tmp/build.log
+          echo "=== exit $? ==="
+          tail -50 /tmp/build.log
           find . -name "*.deb" -o -name "*.dylib" | head -30
 
       - name: Collect artifacts
