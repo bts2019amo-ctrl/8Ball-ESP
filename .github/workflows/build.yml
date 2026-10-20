@@ -15,37 +15,43 @@ jobs:
       - name: Unzip full source
         run: |
           set -x
-          ls -la
           if [ -f 8Ball-2.zip ]; then
             rm -rf 8Ball
             unzip -o 8Ball-2.zip
-            echo "=== extracted ==="
             ls -la 8Ball/
           fi
 
       - name: Install dependencies
         run: |
-          set -x
           sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm curl unzip perl git fakeroot libncurses6
+          sudo apt-get install -y build-essential clang llvm curl unzip perl git fakeroot xz-utils libncurses6
 
-      - name: Setup Theos
+      - name: Setup Theos + SDK + toolchain
         run: |
           set -x
           export THEOS=$HOME/theos
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
           echo "THEOS=$THEOS" >> $GITHUB_ENV
-          cd "$THEOS"
-          git clone --depth 1 https://github.com/theos/sdks.git sdks || true
-          ls -la "$THEOS"/sdks || true
-          # linux ios toolchain
+          mkdir -p "$THEOS/sdks" "$THEOS/toolchain/linux/iphone"
+
+          # iPhoneOS SDK (14.5 matches TARGET)
+          curl -L -o sdk.tar.xz "https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS14.5.sdk.tar.xz"
+          tar -xJf sdk.tar.xz -C "$THEOS/sdks"
+          ls -la "$THEOS/sdks"
+
+          # clang toolchain for linux -> arm64
           curl -L -o toolchain.tar.lzma "https://github.com/sbingner/llvm-project/releases/download/v16.0.0-1/linux-ios-arm64e-clang-toolchain.tar.lzma" || \
-          curl -L -o toolchain.tar.lzma "https://github.com/theos/theos/releases/download/0.0.0/linux-ios-arm64e-clang-toolchain.tar.lzma" || true
-          mkdir -p "$THEOS"/toolchain/linux/iphone
-          if [ -f toolchain.tar.lzma ]; then
-            tar --lzma -xvf toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 || true
+          curl -L -o toolchain.tar.lzma "https://github.com/sbingner/llvm-project/releases/latest/download/linux-ios-arm64e-clang-toolchain.tar.lzma"
+          TMP=$(mktemp -d)
+          tar --lzma -xvf toolchain.tar.lzma -C "$TMP" || tar -xvf toolchain.tar.lzma -C "$TMP"
+          if [ -d "$TMP/ios-arm64e-clang-toolchain" ]; then
+            mv "$TMP/ios-arm64e-clang-toolchain"/* "$THEOS/toolchain/linux/iphone/"
+          else
+            # flat extract fallback
+            find "$TMP" -maxdepth 2 -type d | head
+            cp -a "$TMP"/* "$THEOS/toolchain/linux/iphone/" 2>/dev/null || true
           fi
-          ls -la "$THEOS"/toolchain/linux/iphone || true
+          ls -la "$THEOS/toolchain/linux/iphone" | head -20
 
       - name: Build
         run: |
@@ -53,21 +59,18 @@ jobs:
           export THEOS=$HOME/theos
           export PATH="$THEOS/bin:$PATH"
           cd 8Ball
-          ls -la
-          cat Makefile
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 || make package 2>&1 || true
-          echo "=== after make ==="
-          find . -name "*.deb" -o -name "*.dylib" | head -20
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1
+          echo "=== find outputs ==="
+          find . -name "*.deb" -o -name "*.dylib" | head -30
 
       - name: Collect artifacts
         if: always()
         run: |
           mkdir -p out
-          find 8Ball -name "*.deb" -exec cp {} out/ \; 2>/dev/null || true
-          find 8Ball -name "*.dylib" -exec cp {} out/ \; 2>/dev/null || true
-          find 8Ball/.theos -name "*.dylib" -exec cp {} out/ \; 2>/dev/null || true
+          find 8Ball -name "*.deb" -exec cp -v {} out/ \; 2>/dev/null || true
+          find 8Ball -name "*.dylib" -exec cp -v {} out/ \; 2>/dev/null || true
+          find 8Ball/.theos -name "*.dylib" -exec cp -v {} out/ \; 2>/dev/null || true
           ls -laR out/ || true
-          ls -la 8Ball/packages/ 2>/dev/null || true
 
       - name: Upload
         uses: actions/upload-artifact@v4
