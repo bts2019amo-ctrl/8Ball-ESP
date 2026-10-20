@@ -27,7 +27,7 @@ jobs:
         run: |
           set -x
           sudo apt-get update
-          sudo apt-get install -y build-essential clang llvm curl unzip perl git libncurses6 || true
+          sudo apt-get install -y build-essential clang llvm curl unzip perl git fakeroot libncurses6
 
       - name: Setup Theos
         run: |
@@ -38,14 +38,14 @@ jobs:
           cd "$THEOS"
           git clone --depth 1 https://github.com/theos/sdks.git sdks || true
           ls -la "$THEOS"/sdks || true
-          # toolchain for linux
+          # linux ios toolchain
           curl -L -o toolchain.tar.lzma "https://github.com/sbingner/llvm-project/releases/download/v16.0.0-1/linux-ios-arm64e-clang-toolchain.tar.lzma" || \
-          curl -L -o toolchain.tar.lzma "https://github.com/theos/theos/releases/download/toolchain/linux-ios-arm64e-clang-toolchain.tar.lzma" || true
+          curl -L -o toolchain.tar.lzma "https://github.com/theos/theos/releases/download/0.0.0/linux-ios-arm64e-clang-toolchain.tar.lzma" || true
           mkdir -p "$THEOS"/toolchain/linux/iphone
           if [ -f toolchain.tar.lzma ]; then
-            tar --lzma -xvf toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 || tar -xvf toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 || true
+            tar --lzma -xvf toolchain.tar.lzma -C "$THEOS"/toolchain/linux/iphone --strip-components 1 || true
           fi
-          ls -la "$THEOS"/toolchain/linux/iphone 2>/dev/null || true
+          ls -la "$THEOS"/toolchain/linux/iphone || true
 
       - name: Build
         run: |
@@ -55,8 +55,9 @@ jobs:
           cd 8Ball
           ls -la
           cat Makefile
-          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 | tee /tmp/build.log || make package 2>&1 | tee -a /tmp/build.log || true
-          cat /tmp/build.log | tail -80
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless 2>&1 || make package 2>&1 || true
+          echo "=== after make ==="
+          find . -name "*.deb" -o -name "*.dylib" | head -20
 
       - name: Collect artifacts
         if: always()
@@ -64,10 +65,9 @@ jobs:
           mkdir -p out
           find 8Ball -name "*.deb" -exec cp {} out/ \; 2>/dev/null || true
           find 8Ball -name "*.dylib" -exec cp {} out/ \; 2>/dev/null || true
-          find 8Ball -name "*.so" -exec cp {} out/ \; 2>/dev/null || true
+          find 8Ball/.theos -name "*.dylib" -exec cp {} out/ \; 2>/dev/null || true
           ls -laR out/ || true
           ls -la 8Ball/packages/ 2>/dev/null || true
-          ls -la 8Ball/.theos/obj/ 2>/dev/null || true
 
       - name: Upload
         uses: actions/upload-artifact@v4
